@@ -1,0 +1,846 @@
+src/weekly/admin.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Weekly Breakdown</title>
+    <link rel="stylesheet" href="../common/styles.css">
+    <script src="admin.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1>Manage Weekly Breakdown</h1>
+    </header>
+
+    <main>
+        <section>
+            <h2>Add a New Week</h2>
+
+            <form id="week-form" action="#">
+                <fieldset>
+                    <legend>Weekly Details</legend>
+
+                    <label for="week-title">Week Title</label>
+                    <input
+                        id="week-title"
+                        type="text"
+                        placeholder="Week 1: Introduction to HTML"
+                        required
+                    >
+
+                    <label for="week-start-date">Start Date</label>
+                    <input
+                        id="week-start-date"
+                        type="date"
+                        required
+                    >
+
+                    <label for="week-description">Description</label>
+                    <textarea
+                        id="week-description"
+                        rows="5"
+                    ></textarea>
+
+                    <label for="week-links">Resource Links</label>
+                    <textarea
+                        id="week-links"
+                        rows="3"
+                        placeholder="One URL per line"
+                    ></textarea>
+
+                    <button id="add-week" type="submit">Add Week</button>
+                </fieldset>
+            </form>
+        </section>
+
+        <section>
+            <h2>Current Weekly Breakdown</h2>
+
+            <table id="weeks-table">
+                <thead>
+                    <tr>
+                        <th>Week Title</th>
+                        <th>Start Date</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody id="weeks-tbody"></tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>
+
+
+src/weekly/admin.js
+
+let weeks = [];
+
+const weekForm = document.getElementById('week-form');
+const weeksTbody = document.getElementById('weeks-tbody');
+
+function createWeekRow(week) {
+  const tr = document.createElement('tr');
+
+  const titleCell = document.createElement('td');
+  titleCell.textContent = week.title;
+
+  const startDateCell = document.createElement('td');
+  startDateCell.textContent = week.start_date;
+
+  const descriptionCell = document.createElement('td');
+  descriptionCell.textContent = week.description;
+
+  const actionsCell = document.createElement('td');
+
+  const editButton = document.createElement('button');
+  editButton.className = 'edit-btn';
+  editButton.dataset.id = week.id;
+  editButton.textContent = 'Edit';
+
+  const deleteButton = document.createElement('button');
+  deleteButton.className = 'delete-btn';
+  deleteButton.dataset.id = week.id;
+  deleteButton.textContent = 'Delete';
+
+  actionsCell.appendChild(editButton);
+  actionsCell.appendChild(deleteButton);
+
+  tr.appendChild(titleCell);
+  tr.appendChild(startDateCell);
+  tr.appendChild(descriptionCell);
+  tr.appendChild(actionsCell);
+
+  return tr;
+}
+
+function renderTable() {
+  weeksTbody.innerHTML = '';
+
+  for (const week of weeks) {
+    weeksTbody.appendChild(createWeekRow(week));
+  }
+}
+
+function getFormFields() {
+  const title = document.getElementById('week-title').value.trim();
+  const start_date = document.getElementById('week-start-date').value.trim();
+  const description = document.getElementById('week-description').value.trim();
+  const links = document.getElementById('week-links').value
+    .split('\n')
+    .map(link => link.trim())
+    .filter(link => link !== '');
+
+  return { title, start_date, description, links };
+}
+
+async function handleAddWeek(event) {
+  event.preventDefault();
+
+  const submitButton = document.getElementById('add-week');
+  const fields = getFormFields();
+  const editId = submitButton.dataset.editId;
+
+  if (editId) {
+    await handleUpdateWeek(editId, fields);
+    return;
+  }
+
+  const response = await fetch('./api/index.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+
+  const result = await response.json();
+
+  if (result.success) {
+    weeks.push({ id: result.id, ...fields });
+    renderTable();
+    weekForm.reset();
+  }
+}
+
+async function handleUpdateWeek(id, fields) {
+  const response = await fetch('./api/index.php', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: Number(id), ...fields }),
+  });
+
+  const result = await response.json();
+
+  if (result.success) {
+    weeks = weeks.map(week => {
+      if (Number(week.id) === Number(id)) {
+        return { ...week, ...fields };
+      }
+
+      return week;
+    });
+
+    renderTable();
+    weekForm.reset();
+
+    const submitButton = document.getElementById('add-week');
+    submitButton.textContent = 'Add Week';
+    delete submitButton.dataset.editId;
+  }
+}
+
+async function handleTableClick(event) {
+  const target = event.target;
+
+  if (target.classList.contains('delete-btn')) {
+    const id = target.dataset.id;
+
+    const response = await fetch('./api/index.php?id=' + id, {
+      method: 'DELETE',
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      weeks = weeks.filter(week => Number(week.id) !== Number(id));
+      renderTable();
+    }
+  }
+
+  if (target.classList.contains('edit-btn')) {
+    const id = target.dataset.id;
+    const week = weeks.find(item => Number(item.id) === Number(id));
+
+    if (!week) {
+      return;
+    }
+
+    document.getElementById('week-title').value = week.title;
+    document.getElementById('week-start-date').value = week.start_date;
+    document.getElementById('week-description').value = week.description;
+    document.getElementById('week-links').value = Array.isArray(week.links)
+      ? week.links.join('\n')
+      : '';
+
+    const submitButton = document.getElementById('add-week');
+    submitButton.textContent = 'Update Week';
+    submitButton.dataset.editId = id;
+  }
+}
+
+async function loadAndInitialize() {
+  const response = await fetch('./api/index.php');
+  const result = await response.json();
+
+  weeks = result.success && Array.isArray(result.data) ? result.data : [];
+  renderTable();
+
+  weekForm.addEventListener('submit', handleAddWeek);
+  weeksTbody.addEventListener('click', handleTableClick);
+}
+
+loadAndInitialize();
+
+
+src/weekly/list.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Course Breakdown</title>
+    <link rel="stylesheet" href="../common/styles.css">
+    <script src="list.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1>Weekly Course Breakdown</h1>
+    </header>
+
+    <main>
+        <section id="week-list-section" aria-label="Weekly course content"></section>
+    </main>
+</body>
+</html>
+
+
+src/weekly/list.js
+
+const weekListSection = document.getElementById('week-list-section');
+
+function createWeekArticle(week) {
+  const article = document.createElement('article');
+
+  const title = document.createElement('h2');
+  title.textContent = week.title;
+
+  const startDate = document.createElement('p');
+  startDate.textContent = 'Starts on: ' + week.start_date;
+
+  const description = document.createElement('p');
+  description.textContent = week.description;
+
+  const link = document.createElement('a');
+  link.href = 'details.html?id=' + week.id;
+  link.textContent = 'View Details & Discussion';
+
+  article.appendChild(title);
+  article.appendChild(startDate);
+  article.appendChild(description);
+  article.appendChild(link);
+
+  return article;
+}
+
+async function loadWeeks() {
+  const response = await fetch('./api/index.php');
+  const result = await response.json();
+
+  weekListSection.innerHTML = '';
+
+  if (result.success && Array.isArray(result.data)) {
+    for (const week of result.data) {
+      weekListSection.appendChild(createWeekArticle(week));
+    }
+  }
+}
+
+loadWeeks();
+
+
+src/weekly/details.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Week Details</title>
+    <link rel="stylesheet" href="../common/styles.css">
+    <script src="details.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1 id="week-title"></h1>
+    </header>
+
+    <main>
+        <article>
+            <p id="week-start-date"></p>
+
+            <h2>Description &amp; Notes</h2>
+            <p id="week-description"></p>
+
+            <h2>Exercises &amp; Resources</h2>
+            <ul id="week-links-list"></ul>
+        </article>
+
+        <section id="discussion-forum">
+            <h2>Discussion</h2>
+
+            <div id="comment-list"></div>
+
+            <form id="comment-form" action="#">
+                <fieldset>
+                    <legend>Leave a Comment</legend>
+
+                    <label for="new-comment">Comment</label>
+                    <textarea id="new-comment" rows="5" required></textarea>
+
+                    <button type="submit">Post Comment</button>
+                </fieldset>
+            </form>
+        </section>
+    </main>
+</body>
+</html>
+
+
+src/weekly/details.js
+
+let currentWeekId = null;
+let currentComments = [];
+
+const weekTitle = document.getElementById('week-title');
+const weekStartDate = document.getElementById('week-start-date');
+const weekDescription = document.getElementById('week-description');
+const weekLinksList = document.getElementById('week-links-list');
+const commentList = document.getElementById('comment-list');
+const commentForm = document.getElementById('comment-form');
+const newCommentInput = document.getElementById('new-comment');
+
+function getWeekIdFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('id');
+}
+
+function renderWeekDetails(week) {
+  weekTitle.textContent = week.title;
+  weekStartDate.textContent = 'Starts on: ' + week.start_date;
+  weekDescription.textContent = week.description;
+
+  weekLinksList.innerHTML = '';
+  const links = Array.isArray(week.links) ? week.links : [];
+
+  for (const url of links) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.textContent = url;
+
+    li.appendChild(a);
+    weekLinksList.appendChild(li);
+  }
+}
+
+function createCommentArticle(comment) {
+  const article = document.createElement('article');
+
+  const text = document.createElement('p');
+  text.textContent = comment.text;
+
+  const footer = document.createElement('footer');
+  footer.textContent = 'Posted by: ' + comment.author;
+
+  article.appendChild(text);
+  article.appendChild(footer);
+
+  return article;
+}
+
+function renderComments() {
+  commentList.innerHTML = '';
+
+  for (const comment of currentComments) {
+    commentList.appendChild(createCommentArticle(comment));
+  }
+}
+
+async function handleAddComment(event) {
+  event.preventDefault();
+
+  const commentText = newCommentInput.value.trim();
+
+  if (commentText === '') {
+    return;
+  }
+
+  const response = await fetch('./api/index.php?action=comment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      week_id: currentWeekId,
+      author: 'Student',
+      text: commentText,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (result.success) {
+    currentComments.push(result.data);
+    renderComments();
+    newCommentInput.value = '';
+  }
+}
+
+async function initializePage() {
+  currentWeekId = getWeekIdFromURL();
+
+  if (!currentWeekId) {
+    weekTitle.textContent = 'Week not found.';
+    return;
+  }
+
+  const [weekResponse, commentsResponse] = await Promise.all([
+    fetch('./api/index.php?id=' + currentWeekId),
+    fetch('./api/index.php?action=comments&week_id=' + currentWeekId),
+  ]);
+
+  const weekResult = await weekResponse.json();
+  const commentsResult = await commentsResponse.json();
+
+  currentComments = commentsResult.success && Array.isArray(commentsResult.data)
+    ? commentsResult.data
+    : [];
+
+  if (weekResult.success && weekResult.data) {
+    renderWeekDetails(weekResult.data);
+    renderComments();
+    commentForm.addEventListener('submit', handleAddComment);
+  } else {
+    weekTitle.textContent = 'Week not found.';
+  }
+}
+
+initializePage();
+
+
+src/weekly/api/index.php
+
+<?php
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+require_once __DIR__ . '/../../common/db.php';
+
+$db = getDBConnection();
+$method = $_SERVER['REQUEST_METHOD'];
+
+$rawData = file_get_contents('php://input');
+$data = json_decode($rawData, true);
+
+if (!is_array($data)) {
+    $data = [];
+}
+
+$action = $_GET['action'] ?? null;
+$id = $_GET['id'] ?? null;
+$weekId = $_GET['week_id'] ?? null;
+$commentId = $_GET['comment_id'] ?? null;
+
+function getAllWeeks(PDO $db): void
+{
+    $query = 'SELECT id, title, start_date, description, links, created_at FROM weeks';
+    $params = [];
+
+    $search = trim($_GET['search'] ?? '');
+
+    if ($search !== '') {
+        $query .= ' WHERE title LIKE :search OR description LIKE :search';
+        $params[':search'] = '%' . $search . '%';
+    }
+
+    $allowedSorts = ['title', 'start_date'];
+    $sort = $_GET['sort'] ?? 'start_date';
+
+    if (!in_array($sort, $allowedSorts, true)) {
+        $sort = 'start_date';
+    }
+
+    $order = strtolower($_GET['order'] ?? 'asc');
+
+    if (!in_array($order, ['asc', 'desc'], true)) {
+        $order = 'asc';
+    }
+
+    $query .= " ORDER BY {$sort} {$order}";
+
+    $stmt = $db->prepare($query);
+
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value, PDO::PARAM_STR);
+    }
+
+    $stmt->execute();
+
+    $weeks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($weeks as &$week) {
+        $week['links'] = json_decode($week['links'] ?? '[]', true) ?? [];
+    }
+
+    sendResponse(['success' => true, 'data' => $weeks]);
+}
+
+function getWeekById(PDO $db, $id): void
+{
+    if ($id === null || !is_numeric($id)) {
+        sendResponse(['success' => false, 'message' => 'Invalid week id.'], 400);
+    }
+
+    $stmt = $db->prepare('SELECT id, title, start_date, description, links, created_at FROM weeks WHERE id = ?');
+    $stmt->execute([(int) $id]);
+
+    $week = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$week) {
+        sendResponse(['success' => false, 'message' => 'Week not found.'], 404);
+    }
+
+    $week['links'] = json_decode($week['links'] ?? '[]', true) ?? [];
+
+    sendResponse(['success' => true, 'data' => $week]);
+}
+
+function createWeek(PDO $db, array $data): void
+{
+    if (
+        empty(trim((string) ($data['title'] ?? ''))) ||
+        empty(trim((string) ($data['start_date'] ?? '')))
+    ) {
+        sendResponse(['success' => false, 'message' => 'Title and start_date are required.'], 400);
+    }
+
+    $title = sanitizeInput((string) $data['title']);
+    $startDate = trim((string) $data['start_date']);
+    $description = sanitizeInput((string) ($data['description'] ?? ''));
+
+    if (!validateDate($startDate)) {
+        sendResponse(['success' => false, 'message' => 'Invalid start_date format. Use YYYY-MM-DD.'], 400);
+    }
+
+    $links = isset($data['links']) && is_array($data['links'])
+        ? array_values($data['links'])
+        : [];
+
+    $linksJson = json_encode($links);
+
+    $stmt = $db->prepare('INSERT INTO weeks (title, start_date, description, links) VALUES (?, ?, ?, ?)');
+    $stmt->execute([$title, $startDate, $description, $linksJson]);
+
+    if ($stmt->rowCount() > 0) {
+        sendResponse([
+            'success' => true,
+            'message' => 'Week created successfully.',
+            'id' => (int) $db->lastInsertId(),
+        ], 201);
+    }
+
+    sendResponse(['success' => false, 'message' => 'Week could not be created.'], 500);
+}
+
+function updateWeek(PDO $db, array $data): void
+{
+    if (!isset($data['id']) || !is_numeric($data['id'])) {
+        sendResponse(['success' => false, 'message' => 'Week id is required.'], 400);
+    }
+
+    $id = (int) $data['id'];
+
+    $exists = $db->prepare('SELECT id FROM weeks WHERE id = ?');
+    $exists->execute([$id]);
+
+    if (!$exists->fetch(PDO::FETCH_ASSOC)) {
+        sendResponse(['success' => false, 'message' => 'Week not found.'], 404);
+    }
+
+    $clauses = [];
+    $values = [];
+
+    if (array_key_exists('title', $data)) {
+        $title = sanitizeInput((string) $data['title']);
+
+        if ($title === '') {
+            sendResponse(['success' => false, 'message' => 'Title cannot be empty.'], 400);
+        }
+
+        $clauses[] = 'title = ?';
+        $values[] = $title;
+    }
+
+    if (array_key_exists('start_date', $data)) {
+        $startDate = trim((string) $data['start_date']);
+
+        if (!validateDate($startDate)) {
+            sendResponse(['success' => false, 'message' => 'Invalid start_date format. Use YYYY-MM-DD.'], 400);
+        }
+
+        $clauses[] = 'start_date = ?';
+        $values[] = $startDate;
+    }
+
+    if (array_key_exists('description', $data)) {
+        $clauses[] = 'description = ?';
+        $values[] = sanitizeInput((string) $data['description']);
+    }
+
+    if (array_key_exists('links', $data)) {
+        $links = is_array($data['links']) ? array_values($data['links']) : [];
+        $clauses[] = 'links = ?';
+        $values[] = json_encode($links);
+    }
+
+    if (empty($clauses)) {
+        sendResponse(['success' => false, 'message' => 'No fields to update.'], 400);
+    }
+
+    $values[] = $id;
+
+    $query = 'UPDATE weeks SET ' . implode(', ', $clauses) . ' WHERE id = ?';
+    $stmt = $db->prepare($query);
+    $ok = $stmt->execute($values);
+
+    if ($ok) {
+        sendResponse(['success' => true, 'message' => 'Week updated successfully.']);
+    }
+
+    sendResponse(['success' => false, 'message' => 'Week could not be updated.'], 500);
+}
+
+function deleteWeek(PDO $db, $id): void
+{
+    if ($id === null || !is_numeric($id)) {
+        sendResponse(['success' => false, 'message' => 'Invalid week id.'], 400);
+    }
+
+    $exists = $db->prepare('SELECT id FROM weeks WHERE id = ?');
+    $exists->execute([(int) $id]);
+
+    if (!$exists->fetch(PDO::FETCH_ASSOC)) {
+        sendResponse(['success' => false, 'message' => 'Week not found.'], 404);
+    }
+
+    $stmt = $db->prepare('DELETE FROM weeks WHERE id = ?');
+    $stmt->execute([(int) $id]);
+
+    if ($stmt->rowCount() > 0) {
+        sendResponse(['success' => true, 'message' => 'Week deleted successfully.']);
+    }
+
+    sendResponse(['success' => false, 'message' => 'Week could not be deleted.'], 500);
+}
+
+function getCommentsByWeek(PDO $db, $weekId): void
+{
+    if ($weekId === null || !is_numeric($weekId)) {
+        sendResponse(['success' => false, 'message' => 'Invalid week id.'], 400);
+    }
+
+    $stmt = $db->prepare(
+        'SELECT id, week_id, author, text, created_at
+         FROM comments_week
+         WHERE week_id = ?
+         ORDER BY created_at ASC'
+    );
+
+    $stmt->execute([(int) $weekId]);
+
+    sendResponse(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
+function createComment(PDO $db, array $data): void
+{
+    if (
+        !isset($data['week_id']) ||
+        !is_numeric($data['week_id']) ||
+        empty(trim((string) ($data['author'] ?? ''))) ||
+        empty(trim((string) ($data['text'] ?? '')))
+    ) {
+        sendResponse(['success' => false, 'message' => 'week_id, author, and text are required.'], 400);
+    }
+
+    $weekId = (int) $data['week_id'];
+    $author = sanitizeInput((string) $data['author']);
+    $text = sanitizeInput((string) $data['text']);
+
+    $exists = $db->prepare('SELECT id FROM weeks WHERE id = ?');
+    $exists->execute([$weekId]);
+
+    if (!$exists->fetch(PDO::FETCH_ASSOC)) {
+        sendResponse(['success' => false, 'message' => 'Week not found.'], 404);
+    }
+
+    $stmt = $db->prepare('INSERT INTO comments_week (week_id, author, text) VALUES (?, ?, ?)');
+    $stmt->execute([$weekId, $author, $text]);
+
+    if ($stmt->rowCount() > 0) {
+        $newId = (int) $db->lastInsertId();
+
+        $select = $db->prepare(
+            'SELECT id, week_id, author, text, created_at
+             FROM comments_week
+             WHERE id = ?'
+        );
+
+        $select->execute([$newId]);
+        $comment = $select->fetch(PDO::FETCH_ASSOC);
+
+        sendResponse([
+            'success' => true,
+            'message' => 'Comment created successfully.',
+            'id' => $newId,
+            'data' => $comment,
+        ], 201);
+    }
+
+    sendResponse(['success' => false, 'message' => 'Comment could not be created.'], 500);
+}
+
+function deleteComment(PDO $db, $commentId): void
+{
+    if ($commentId === null || !is_numeric($commentId)) {
+        sendResponse(['success' => false, 'message' => 'Invalid comment id.'], 400);
+    }
+
+    $exists = $db->prepare('SELECT id FROM comments_week WHERE id = ?');
+    $exists->execute([(int) $commentId]);
+
+    if (!$exists->fetch(PDO::FETCH_ASSOC)) {
+        sendResponse(['success' => false, 'message' => 'Comment not found.'], 404);
+    }
+
+    $stmt = $db->prepare('DELETE FROM comments_week WHERE id = ?');
+    $stmt->execute([(int) $commentId]);
+
+    if ($stmt->rowCount() > 0) {
+        sendResponse(['success' => true, 'message' => 'Comment deleted successfully.']);
+    }
+
+    sendResponse(['success' => false, 'message' => 'Comment could not be deleted.'], 500);
+}
+
+try {
+    if ($method === 'GET') {
+        if ($action === 'comments') {
+            getCommentsByWeek($db, $weekId);
+        } elseif ($id !== null) {
+            getWeekById($db, $id);
+        } else {
+            getAllWeeks($db);
+        }
+    } elseif ($method === 'POST') {
+        if ($action === 'comment') {
+            createComment($db, $data);
+        } else {
+            createWeek($db, $data);
+        }
+    } elseif ($method === 'PUT') {
+        updateWeek($db, $data);
+    } elseif ($method === 'DELETE') {
+        if ($action === 'delete_comment') {
+            deleteComment($db, $commentId);
+        } else {
+            deleteWeek($db, $id);
+        }
+    } else {
+        sendResponse(['success' => false, 'message' => 'Method not allowed.'], 405);
+    }
+} catch (PDOException $e) {
+    error_log($e->getMessage());
+    sendResponse(['success' => false, 'message' => 'Internal server error.'], 500);
+} catch (Exception $e) {
+    error_log($e->getMessage());
+    sendResponse(['success' => false, 'message' => 'Internal server error.'], 500);
+}
+
+function sendResponse(array $data, int $statusCode = 200): void
+{
+    http_response_code($statusCode);
+    echo json_encode($data, JSON_PRETTY_PRINT);
+    exit;
+}
+
+function validateDate(string $date): bool
+{
+    $d = DateTime::createFromFormat('Y-m-d', $date);
+
+    return $d && $d->format('Y-m-d') === $date;
+}
+
+function sanitizeInput(string $data): string
+{
+    return htmlspecialchars(strip_tags(trim($data)), ENT_QUOTES, 'UTF-8');
+}
